@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Web Slot Machine</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Oswald:wght@500;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="game-container">
+        <!-- Economy Section -->
+        <div class="economy-panel">
+            <div class="wallet-info">
+                <div class="wallet-item">所持金: <span id="yen-count">10000</span> 円</div>
+                <div class="wallet-item">クレジット: <span id="credit-count">0</span></div>
+            </div>
+            <div class="wallet-actions">
+                <button id="dispense-btn" class="action-btn">クレジット貸出 (1000円 → 46枚)</button>
+                <button id="exchange-btn" class="action-btn">景品交換 (クレジット52枚 → 1000円)</button>
+            </div>
+            <div class="wallet-actions" style="margin-top: 5px;">
+                <button id="sound-toggle-btn" class="action-btn" style="background:#552222; flex:1;">サウンド: OFF</button>
+                <button id="debug-toggle-btn" class="action-btn" style="background:#444; flex:1;">開発者モード: OFF</button>
+            </div>
+            <div id="debug-panel" class="debug-panel" style="display: none;">
+                <div class="debug-item">内部フラグ: <span id="debug-flag">BLANK</span></div>
+                <div class="debug-item">GOGOフラグ: <span id="debug-gogo">OFF</span></div>
+            </div>
+        </div>
+
+        <!-- Data Lamp -->
+        <div class="data-lamp">
+            <div class="lamp-section">
+                <div class="lamp-label">BIG</div>
+                <div class="lamp-value digital-font" id="big-count">0</div>
+            </div>
+            <div class="lamp-section">
+                <div class="lamp-label">REG</div>
+                <div class="lamp-value digital-font" id="reg-count">0</div>
+            </div>
+            <div class="lamp-section main-counter">
+                <div class="lamp-label">GAMES</div>
+                <div class="lamp-value digital-font" id="games-count">0</div>
+            </div>
+        </div>
+
+        <!-- Slot Machine Cabinet -->
+        <div class="cabinet">
+            <!-- Payout Table -->
+            <div class="payout-table">
+                <div class="payout-item row-big"><span class="symbol seven">777</span>: 312</div>
+                <div class="payout-item row-reg"><span class="symbol seven">77</span><span
+                        class="symbol bar">BAR</span>: 104</div>
+                <div class="payout-item row-rare"><span class="symbol bar">BAR</span>: 12 <small>(chance!!)</small>
+                </div>
+                <div class="payout-item"><span>🍒</span>: 2 <small>(chance?)</small></div>
+                <div class="payout-item"><span>🔔</span>: 4</div>
+                <div class="payout-item"><span>🍇</span>: 7</div>
+                <div class="payout-item"><span>REP</span>: 再遊戯</div>
+            </div>
+
+            <!-- GOGO Lamp -->
+            <div class="lamp-area">
+                <div id="gogo-lamp" class="gogo-lamp">
+                    <span class="gogo-text">GOGO!</span>
+                    <span class="chance-text">CHANCE</span>
+                </div>
+            </div>
+
+            <!-- Reels Window -->
+            <div class="reels-window">
+                <div class="payline top-line"></div>
+                <div class="payline center-line"></div>
+                <div class="payline bottom-line"></div>
+                <!-- 3 Reels -->
+                <div class="reels-container">
+                    <div class="reel-wrapper" id="reel-wrapper-0">
+                        <div class="reel" id="reel-0"></div>
+                    </div>
+                    <div class="reel-wrapper" id="reel-wrapper-1">
+                        <div class="reel" id="reel-1"></div>
+                    </div>
+                    <div class="reel-wrapper" id="reel-wrapper-2">
+                        <div class="reel" id="reel-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Machine Controls (Redesigned) -->
+            <div class="machine-controls-redesign">
+                <div class="controls-top-row">
+                    <button class="control-btn bet-btn" id="max-bet-btn">MAX BET</button>
+                    <div class="credit-display-box">
+                        <span class="credit-label">CREDIT</span>
+                        <div id="credit-count-display" class="credit-value digital-font">0</div>
+                    </div>
+                    <div id="bet-indicator" class="bet-indicator-box digital-font">0</div>
+                </div>
+                <div class="controls-bottom-row">
+                    <button class="control-btn lever-btn" id="spin-btn">LEVER</button>
+                    <div class="stop-buttons-group">
+                        <button class="stop-btn" id="stop-0"></button>
+                        <button class="stop-btn" id="stop-1"></button>
+                        <button class="stop-btn" id="stop-2"></button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Feedback MSG -->
+        <div id="message-area" class="message-area">あそびかた: メダルを借りてMAX BETを押し、レバーを叩いてストップボタンを押す！</div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+
+</html>
