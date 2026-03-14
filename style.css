@@ -38,6 +38,43 @@ body {
     padding: 10px;
 }
 
+/* Freeze Overlay */
+.freeze-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: #000;
+    z-index: 9999;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 1s ease-in-out;
+}
+
+.freeze-overlay.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* GOGO Lamp Blink Animation */
+@keyframes gogo-blink {
+    0% {
+        opacity: 0.2;
+        text-shadow: none;
+    }
+
+    100% {
+        opacity: 1;
+        text-shadow: var(--purple-glow), 0 0 20px #fff;
+    }
+}
+
+.gogo-lamp.on.blink .gogo-text,
+.gogo-lamp.on.blink .chance-text {
+    animation: gogo-blink 0.4s infinite alternate;
+}
+
 /* Economy Panel */
 .economy-panel {
     background: linear-gradient(135deg, #2a2a35, #1a1a24);
