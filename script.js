@@ -2,7 +2,12 @@ const CONFIG = {
     SYMBOL_HEIGHT: 60,
     REEL_LENGTH: 21,
     SPIN_SPEED: 0.25, // symbols per frame
-    MAX_SLIP_FRAMES: 8 // Maximum allowed slip (frames)
+    MAX_SLIP_FRAMES: 8, // Maximum allowed slip (frames)
+    BONUS_GRAPE_PAYOUT: 24,
+    BONUS_GAME_COUNTS: {
+        BIG: 12, // Number of wins
+        REG: 6
+    }
 };
 
 const SYMBOLS = {
@@ -57,6 +62,12 @@ const LOTTERY_TABLE = {
         { role: ROLES.BELL, weight: 5461 },
         { role: ROLES.CHERRY, weight: 1872 }
         // ボーナス成立中は他のボーナス系抽選を取り除く
+    ],
+    BONUS_GAME: [
+        // ボーナスゲーム中（ブドウ超高確率）
+        { role: ROLES.GRAPE, weight: 50000 },
+        { role: ROLES.REPLAY, weight: 2000 },
+        { role: ROLES.CHERRY, weight: 1000 }
     ]
 };
 
@@ -79,6 +90,8 @@ class SoundFX {
         this.ctx = new (window.AudioContext || window.webkitAudioContext)();
         this.enabled = false;
         this.spinOsc = null;
+        this.bgmOscs = [];
+        this.bgmLoop = null;
     }
 
     playTone(freq, type, duration, vol = 0.1) {
@@ -206,6 +219,54 @@ class SoundFX {
         midOsc.start();
         subOsc.stop(this.ctx.currentTime + duration);
         midOsc.stop(this.ctx.currentTime + duration);
+    }
+
+    startBonusBGM() {
+        if (!this.enabled || this.bgmLoop) return;
+
+        const playStep = (time, freq, vol, type = 'square') => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.index = 0; // tracking
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, time);
+            gain.gain.setValueAtTime(vol, time);
+            gain.gain.exponentialRampToValueAtTime(0.01, time + 0.15);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(time);
+            osc.stop(time + 0.2);
+            return osc;
+        };
+
+        // Arpeggio sequence for more "hype"
+        const sequence = [
+            { f: 523.25, t: 0 }, { f: 659.25, t: 0.1 }, { f: 783.99, t: 0.2 }, { f: 1046.50, t: 0.3 },
+            { f: 587.33, t: 0.4 }, { f: 739.99, t: 0.5 }, { f: 880.00, t: 0.6 }, { f: 1174.66, t: 0.7 },
+            { f: 523.25, t: 0.8 }, { f: 659.25, t: 0.9 }, { f: 783.99, t: 1.0 }, { f: 1046.50, t: 1.1 },
+            { f: 440.00, t: 1.2 }, { f: 493.88, t: 1.3 }, { f: 523.25, t: 1.4 }, { f: 587.33, t: 1.5 }
+        ];
+
+        let loopStartTime = this.ctx.currentTime;
+        const startLoop = () => {
+            sequence.forEach(note => {
+                playStep(loopStartTime + note.t, note.f, 0.03, 'square');
+                // Bass note
+                if (note.t % 0.4 === 0) {
+                    playStep(loopStartTime + note.t, note.f / 4, 0.05, 'triangle');
+                }
+            });
+            loopStartTime += 1.6;
+            this.bgmLoop = setTimeout(startLoop, 1600);
+        };
+        startLoop();
+    }
+
+    stopBonusBGM() {
+        if (this.bgmLoop) {
+            clearTimeout(this.bgmLoop);
+            this.bgmLoop = null;
+        }
     }
 }
 
@@ -522,7 +583,12 @@ class SlotGame {
             gogoState: 'OFF',    // 'OFF', 'ON', 'BLINK'
 
             currentRole: ROLES.BLANK, // 毎ゲームの成立フラグ
-            active: false
+            active: false,
+
+            // ボーナスゲーム管理
+            isBonusGame: false,
+            bonusGamesRemaining: 0,
+            activeBonusType: null // 'BIG' | 'REG'
         };
 
         // DOM Encapsulation
@@ -587,6 +653,7 @@ class SlotGame {
                 this.els.btnSoundToggle.innerText = "サウンド: ON";
                 this.els.btnSoundToggle.style.background = "#225522";
                 this.sfx.coin();
+                if (this.state.isBonusGame) this.sfx.startBonusBGM();
             } else {
                 this.els.btnSoundToggle.innerText = "サウンド: OFF";
                 this.els.btnSoundToggle.style.background = "#552222";
@@ -664,6 +731,11 @@ class SlotGame {
         const flagNames = { 7: "BAR揃い", [-1]: "BLANK", 99: "PGG(フリーズ)" };
         this.els.debugFlag.innerText = sym ? sym.name : (flagNames[this.state.currentRole] || "BLANK");
         this.els.debugGogo.innerText = (this.state.internalBonus !== null) ? "ON" : "OFF";
+
+        // Bonus Game UI
+        if (this.state.isBonusGame) {
+            this.els.msg.innerText = `BONUS中！ 残り入賞回数: ${this.state.bonusGamesRemaining}`;
+        }
     }
 
     // --- Persistence Methods ---
@@ -677,7 +749,10 @@ class SlotGame {
             regs: this.state.regs,
             pendingBigs: this.state.pendingBigs,
             internalBonus: this.state.internalBonus,
-            gogoState: this.state.gogoState
+            gogoState: this.state.gogoState,
+            isBonusGame: this.state.isBonusGame,
+            bonusGamesRemaining: this.state.bonusGamesRemaining,
+            activeBonusType: this.state.activeBonusType
         };
         localStorage.setItem('slot_game_state', JSON.stringify(data));
     }
@@ -697,6 +772,13 @@ class SlotGame {
 
                 if (data.gogoState) {
                     this.setGogoState(data.gogoState);
+                }
+                this.state.isBonusGame = data.isBonusGame ?? false;
+                this.state.bonusGamesRemaining = data.bonusGamesRemaining ?? 0;
+                this.state.activeBonusType = data.activeBonusType ?? null;
+
+                if (this.state.isBonusGame) {
+                    setTimeout(() => this.sfx.startBonusBGM(), 100);
                 }
             } catch (e) {
                 console.error("Failed to load state", e);
@@ -753,9 +835,10 @@ class SlotGame {
             return;
         }
 
-        if (this.state.credits >= 3) {
-            this.state.bet = 3;
-            this.state.credits -= 3;
+        if (this.state.credits >= 3 || (this.state.isBonusGame && this.state.credits >= 1)) {
+            const betAmount = this.state.isBonusGame ? 1 : 3;
+            this.state.bet = betAmount;
+            this.state.credits -= betAmount;
             this.sfx.bet();
             this.state.payoutDisplay = 0;
             this.updateUI();
@@ -765,7 +848,8 @@ class SlotGame {
     }
 
     startSpin() {
-        if (this.state.active || this.state.bet < 3) return;
+        const requiredBet = this.state.isBonusGame ? 1 : 3;
+        if (this.state.active || this.state.bet < requiredBet) return;
         if (this.state.isFreezing) return;
 
         this.state.active = true;
@@ -809,7 +893,13 @@ class SlotGame {
             this.state.internalBonus = ROLES.BIG;
             this.triggerGogo(true);
         } else {
-            const table = this.state.internalBonus === null ? LOTTERY_TABLE.NORMAL : LOTTERY_TABLE.BONUS_ACTIVE;
+            let table = LOTTERY_TABLE.NORMAL;
+            if (this.state.isBonusGame) {
+                table = LOTTERY_TABLE.BONUS_GAME;
+            } else if (this.state.internalBonus !== null) {
+                table = LOTTERY_TABLE.BONUS_ACTIVE;
+            }
+
             const rnd = Math.random() * 65536;
             let currentWeight = 0;
 
@@ -881,15 +971,22 @@ class SlotGame {
                 this.setGogoState('OFF');
                 this.state.spins = 0;
 
+                this.state.isBonusGame = true;
                 if (winResult.id === ROLES.BIG) {
                     this.state.bigs++;
+                    this.state.activeBonusType = 'BIG';
+                    this.state.bonusGamesRemaining = CONFIG.BONUS_GAME_COUNTS.BIG;
                     if (this.state.pendingBigs > 0) this.state.pendingBigs--;
-                    this.msg("BIG BONUS!!");
+                    this.msg("BIG BONUS開始!!");
                 } else {
                     this.state.regs++;
-                    this.msg("REGULAR BONUS!");
+                    this.state.activeBonusType = 'REG';
+                    this.state.bonusGamesRemaining = CONFIG.BONUS_GAME_COUNTS.REG;
+                    this.msg("REGULAR BONUS開始!");
                 }
+                this.state.bet = 3; // Treat as replay
                 this.sfx.bonus();
+                this.sfx.startBonusBGM();
                 break;
 
             case 'RARE':
@@ -901,9 +998,19 @@ class SlotGame {
 
             case 'SMALL':
                 if (winResult.id === SYMBOLS.REPLAY.id) {
-                    this.state.bet = 3;
+                    this.state.bet = requiredBet;
                     this.msg("REPLAY");
                 } else {
+                    if (this.state.isBonusGame && winResult.id === SYMBOLS.GRAPE.id) {
+                        payout = CONFIG.BONUS_GRAPE_PAYOUT;
+                        this.state.bonusGamesRemaining--;
+                        if (this.state.bonusGamesRemaining <= 0) {
+                            this.state.isBonusGame = false;
+                            this.state.activeBonusType = null;
+                            this.sfx.stopBonusBGM();
+                            this.msg("BONUS終了");
+                        }
+                    }
                     this.msg(`当り！ ${winResult.name} / ${payout}枚払い出し`);
                     this.sfx.payout();
                 }
@@ -925,8 +1032,9 @@ class SlotGame {
 
         this.state.payoutDisplay = payout;
 
-        // Reset Bet if not replay
-        if (winResult.id !== SYMBOLS.REPLAY.id) {
+        // Reset Bet if not replay or bonus entry
+        const isReplayType = winResult.id === SYMBOLS.REPLAY.id || winResult.type === 'BONUS';
+        if (!isReplayType) {
             this.state.bet = 0;
             if (payout > 0) {
                 this.state.credits += payout;
