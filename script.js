@@ -559,6 +559,7 @@ class SlotGame {
         };
 
         this.reelCtrl = new ReelController(this.els.reelElements, this.sfx);
+        this.loadState();
         this.bindEvents();
         this.updateUI();
     }
@@ -663,6 +664,44 @@ class SlotGame {
         const flagNames = { 7: "BAR揃い", [-1]: "BLANK", 99: "PGG(フリーズ)" };
         this.els.debugFlag.innerText = sym ? sym.name : (flagNames[this.state.currentRole] || "BLANK");
         this.els.debugGogo.innerText = (this.state.internalBonus !== null) ? "ON" : "OFF";
+    }
+
+    // --- Persistence Methods ---
+
+    saveState() {
+        const data = {
+            yen: this.state.yen,
+            credits: this.state.credits,
+            spins: this.state.spins,
+            bigs: this.state.bigs,
+            regs: this.state.regs,
+            pendingBigs: this.state.pendingBigs,
+            internalBonus: this.state.internalBonus,
+            gogoState: this.state.gogoState
+        };
+        localStorage.setItem('slot_game_state', JSON.stringify(data));
+    }
+
+    loadState() {
+        const saved = localStorage.getItem('slot_game_state');
+        if (saved) {
+            try {
+                const data = JSON.parse(saved);
+                this.state.yen = data.yen ?? 10000;
+                this.state.credits = data.credits ?? 0;
+                this.state.spins = data.spins ?? 0;
+                this.state.bigs = data.bigs ?? 0;
+                this.state.regs = data.regs ?? 0;
+                this.state.pendingBigs = data.pendingBigs ?? 0;
+                this.state.internalBonus = data.internalBonus ?? null;
+
+                if (data.gogoState) {
+                    this.setGogoState(data.gogoState);
+                }
+            } catch (e) {
+                console.error("Failed to load state", e);
+            }
+        }
     }
 
     updateUIButtons() {
@@ -895,6 +934,7 @@ class SlotGame {
         }
 
         this.updateUI();
+        this.saveState();
     }
 }
 
