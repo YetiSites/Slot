@@ -32,6 +32,22 @@
             <div id="debug-panel" class="debug-panel" style="display: none;">
                 <div class="debug-item">内部フラグ: <span id="debug-flag">BLANK</span></div>
                 <div class="debug-item">GOGOフラグ: <span id="debug-gogo">OFF</span></div>
+                <div class="debug-item">
+                    次回小役フラグ:
+                    <select id="debug-next-flag"
+                        style="background:#222; color:#0f0; border:1px solid #0f0; font-size:12px;">
+                        <option value="AUTO">自動（通常）</option>
+                        <option value="99">Long Freeze (フリーズ)</option>
+                        <option value="0">BIG (777)</option>
+                        <option value="1">REG (77BAR)</option>
+                        <option value="7">BAR揃い (Rare BAR)</option>
+                        <option value="3">CHERRY (🍒)</option>
+                        <option value="5">GRAPE (🍇)</option>
+                        <option value="2">BELL (🔔)</option>
+                        <option value="4">REPLAY (REP)</option>
+                        <option value="-1">BLANK (ハズレ)</option>
+                    </select>
+                </div>
             </div>
         </div>
 
@@ -55,9 +71,9 @@
         <div class="cabinet">
             <!-- Payout Table -->
             <div class="payout-table">
-                <div class="payout-item row-big"><span class="symbol seven">777</span>: 288枚</div>
-                <div class="payout-item row-reg"><span class="symbol seven">77</span><span
-                        class="symbol bar">BAR</span>: 144枚</div>
+                <div class="payout-item row-big"><span class="symbol seven">777</span></div>
+                <div class="payout-item row-reg"><span class="symbol seven">77</span><span class="symbol bar">BAR</span>
+                </div>
                 <div class="payout-item row-rare"><span class="symbol bar">BAR</span>: 12 <small>(chance!!)</small>
                 </div>
                 <div class="payout-item"><span>🍒</span>: 2 <small>(chance?)</small></div>

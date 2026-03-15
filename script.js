@@ -11,8 +11,8 @@ const CONFIG = {
 };
 
 const SYMBOLS = {
-    BIG: { id: 0, class: 'seven', name: '7', payout: 312 },
-    REG: { id: 1, class: 'bar', name: 'BAR', payout: 104 },
+    BIG: { id: 0, class: 'seven', name: '7', payout: 0 },
+    REG: { id: 1, class: 'bar', name: 'BAR', payout: 0 },
     BELL: { id: 2, class: 'bell', name: '🔔', payout: 12 },
     CHERRY: { id: 3, class: 'cherry', name: '🍒', payout: 2 },
     REPLAY: { id: 4, class: 'replay', name: 'REP', payout: 0 },
@@ -59,9 +59,8 @@ const LOTTERY_TABLE = {
         // ボーナス成立中（内部中）の小役確率
         { role: ROLES.REPLAY, weight: 9298 },
         { role: ROLES.GRAPE, weight: 7281 },
-        { role: ROLES.BELL, weight: 5461 },
-        { role: ROLES.CHERRY, weight: 1872 }
-        // ボーナス成立中は他のボーナス系抽選を取り除く
+        { role: ROLES.BELL, weight: 5461 }
+        // チェリーおよびボーナス系抽選（BIG, REG, BAR_RARE）を取り除く
     ],
     BONUS_GAME: [
         // ボーナスゲーム中（ブドウ超高確率）
@@ -575,14 +574,15 @@ class SlotGame {
             bigs: 0,
             regs: 0,
             payoutDisplay: 0,
-            pendingBigs: 0,
             isFreezing: false,
 
             // GOGOランプ・ボーナス状態を一元管理
             internalBonus: null, // null, ROLES.BIG, ROLES.REG
             gogoState: 'OFF',    // 'OFF', 'ON', 'BLINK'
+            isPremiumBonus: false, // フリーズ経由の特別ボーナスフラグ
 
             currentRole: ROLES.BLANK, // 毎ゲームの成立フラグ
+            forcedFlag: null,         // 開発者モード用：強制フラグ (null または ROLESの値)
             active: false,
 
             // ボーナスゲーム管理
@@ -621,7 +621,8 @@ class SlotGame {
                 document.getElementById('reel-0'),
                 document.getElementById('reel-1'),
                 document.getElementById('reel-2')
-            ]
+            ],
+            debugNextFlag: document.getElementById('debug-next-flag')
         };
 
         this.reelCtrl = new ReelController(this.els.reelElements, this.sfx);
@@ -672,6 +673,11 @@ class SlotGame {
                 this.els.btnDebugToggle.innerText = "開発者モード: OFF";
                 this.els.btnDebugToggle.style.background = "#444";
             }
+        });
+
+        this.els.debugNextFlag.addEventListener('change', (e) => {
+            const val = e.target.value;
+            this.state.forcedFlag = (val === "AUTO") ? null : parseInt(val);
         });
 
         // Economy Actions
@@ -747,12 +753,12 @@ class SlotGame {
             spins: this.state.spins,
             bigs: this.state.bigs,
             regs: this.state.regs,
-            pendingBigs: this.state.pendingBigs,
             internalBonus: this.state.internalBonus,
             gogoState: this.state.gogoState,
             isBonusGame: this.state.isBonusGame,
             bonusGamesRemaining: this.state.bonusGamesRemaining,
-            activeBonusType: this.state.activeBonusType
+            activeBonusType: this.state.activeBonusType,
+            isPremiumBonus: this.state.isPremiumBonus
         };
         localStorage.setItem('slot_game_state', JSON.stringify(data));
     }
@@ -767,7 +773,6 @@ class SlotGame {
                 this.state.spins = data.spins ?? 0;
                 this.state.bigs = data.bigs ?? 0;
                 this.state.regs = data.regs ?? 0;
-                this.state.pendingBigs = data.pendingBigs ?? 0;
                 this.state.internalBonus = data.internalBonus ?? null;
 
                 if (data.gogoState) {
@@ -776,6 +781,7 @@ class SlotGame {
                 this.state.isBonusGame = data.isBonusGame ?? false;
                 this.state.bonusGamesRemaining = data.bonusGamesRemaining ?? 0;
                 this.state.activeBonusType = data.activeBonusType ?? null;
+                this.state.isPremiumBonus = data.isPremiumBonus ?? false;
 
                 if (this.state.isBonusGame) {
                     setTimeout(() => this.sfx.startBonusBGM(), 100);
@@ -871,7 +877,7 @@ class SlotGame {
         // Pre-notification of GOGO (25% chance if internal bonus hit normally)
         if (this.state.internalBonus !== null && this.state.gogoState === 'OFF') {
             if (this.state.currentRole !== ROLES.BAR_RARE && Math.random() < 0.25) {
-                this.triggerGogo(this.state.pendingBigs > 0);
+                this.triggerGogo(false);
             }
         }
 
@@ -887,12 +893,14 @@ class SlotGame {
     executeLottery() {
         let role = ROLES.BLANK;
 
-        // 1G連強制上書き
-        if (this.state.pendingBigs > 0 && this.state.internalBonus === null) {
-            role = ROLES.BIG;
-            this.state.internalBonus = ROLES.BIG;
-            this.triggerGogo(true);
+        // --- 1. フラグ決定フェーズ ---
+        if (this.state.forcedFlag !== null) {
+            // 開発者モード強制フラグ
+            role = this.state.forcedFlag;
+            this.state.forcedFlag = null; // 1回切り
+            this.els.debugNextFlag.value = "AUTO";
         } else {
+            // 通常のテーブル抽選
             let table = LOTTERY_TABLE.NORMAL;
             if (this.state.isBonusGame) {
                 table = LOTTERY_TABLE.BONUS_GAME;
@@ -910,26 +918,32 @@ class SlotGame {
                     break;
                 }
             }
+        }
 
-            // 特殊処理・ボーナスフラグ保持
-            if (role === ROLES.FREEZE && this.state.internalBonus === null && this.state.pendingBigs === 0) {
+        // --- 2. 決定したフラグに基づく状態更新フェーズ ---
+        this.state.currentRole = role;
+
+        if (role === ROLES.FREEZE) {
+            // フリーズフラグ成立 (通常抽選または強制時)
+            if (this.state.internalBonus === null) {
                 this.state.isFreezing = true;
-                this.state.pendingBigs = 3;
-                role = ROLES.BIG;
+                this.state.isPremiumBonus = true; // プレミアムフラグ
+                this.state.currentRole = ROLES.BIG; // 内部フラグはBIGとして扱う
                 this.state.internalBonus = ROLES.BIG;
-            } else if (role === ROLES.BAR_RARE) {
-                if (this.state.internalBonus === null) {
-                    this.state.internalBonus = Math.random() < 0.5 ? ROLES.BIG : ROLES.REG;
-                }
-            } else if (role === ROLES.BIG || role === ROLES.REG) {
-                if (this.state.internalBonus === null) {
-                    this.state.internalBonus = role;
-                }
+            }
+        } else if (role === ROLES.BAR_RARE) {
+            // レアBAR成立
+            if (this.state.internalBonus === null) {
+                this.state.internalBonus = Math.random() < 0.5 ? ROLES.BIG : ROLES.REG;
+            }
+        } else if (role === ROLES.BIG || role === ROLES.REG) {
+            // ボーナス生フラグ成立
+            if (this.state.internalBonus === null) {
+                this.state.internalBonus = role;
             }
         }
 
-        this.state.currentRole = role;
-        this.updateUI(); // Update debug immediately
+        this.updateUI(); // デバッグ表示などを即時更新
     }
 
     playFreezeSequence() {
@@ -961,8 +975,9 @@ class SlotGame {
         let payout = winResult.payout;
 
         // Ensure GOGO is visibly lit if internalBonus exists (Post-notification)
-        if (this.state.internalBonus !== null && this.state.gogoState === 'OFF') {
-            this.triggerGogo(this.state.pendingBigs > 0);
+        // 入賞時は switch 内で OFF にするため、入賞（BONUS）以外の場合のみ実行
+        if (winResult.type !== 'BONUS' && this.state.internalBonus !== null && this.state.gogoState === 'OFF') {
+            this.triggerGogo(false);
         }
 
         switch (winResult.type) {
@@ -976,8 +991,12 @@ class SlotGame {
                     this.state.bigs++;
                     this.state.activeBonusType = 'BIG';
                     this.state.bonusGamesRemaining = CONFIG.BONUS_GAME_COUNTS.BIG;
-                    if (this.state.pendingBigs > 0) this.state.pendingBigs--;
-                    this.msg("BIG BONUS開始!!");
+                    if (this.state.isPremiumBonus) {
+                        this.triggerGogo(true); // 点滅維持
+                        this.msg("PREMIUM BIG BONUS開始!!");
+                    } else {
+                        this.msg("BIG BONUS開始!!");
+                    }
                 } else {
                     this.state.regs++;
                     this.state.activeBonusType = 'REG';
@@ -1002,12 +1021,14 @@ class SlotGame {
                     this.msg("REPLAY");
                 } else {
                     if (this.state.isBonusGame && winResult.id === SYMBOLS.GRAPE.id) {
-                        payout = CONFIG.BONUS_GRAPE_PAYOUT;
+                        payout = this.state.isPremiumBonus ? 72 : CONFIG.BONUS_GRAPE_PAYOUT;
                         this.state.bonusGamesRemaining--;
                         if (this.state.bonusGamesRemaining <= 0) {
                             this.state.isBonusGame = false;
+                            this.state.isPremiumBonus = false; // プレミアム終了
                             this.state.activeBonusType = null;
                             this.sfx.stopBonusBGM();
+                            this.setGogoState('OFF');
                             this.msg("BONUS終了");
                         }
                     }
